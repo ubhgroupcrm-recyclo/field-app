@@ -39,6 +39,24 @@ export function CameraScanner({ onScan }: { onScan: (code: string) => void }) {
     return () => { alive = false; controls?.stop() }
   }, [onScan])
 
+  useEffect(() => {
+    let buffer = ''
+    let lastKeyAt = 0
+    const onKey = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      const now = Date.now()
+      if (now - lastKeyAt > 180) buffer = ''
+      lastKeyAt = now
+      if (event.key === 'Enter') {
+        if (buffer.length >= 3) { event.preventDefault(); accept(buffer); buffer = '' }
+        return
+      }
+      if (event.key.length === 1) buffer += event.key
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onScan])
+
   const scanPhoto = async (event: ChangeEvent<HTMLInputElement>) => {
     const image = event.target.files?.[0]; if (!image) return
     setMessage('Reading photo…')
@@ -50,5 +68,5 @@ export function CameraScanner({ onScan }: { onScan: (code: string) => void }) {
     } catch { setMessage('No readable barcode was found in that photo. Move closer, reduce glare and try again.') } finally { URL.revokeObjectURL(url); event.target.value = '' }
   }
 
-  return <div className="camera-scanner"><video ref={video} autoPlay playsInline muted /><p>{message}</p><label className="scan-photo">Take barcode photo<input type="file" accept="image/*" capture="environment" onChange={scanPhoto} /></label><small>For 1D barcodes, fill most of the frame width and hold the device steady. A Bluetooth scanner may also be used for faster bulk scans.</small></div>
+  return <div className="camera-scanner"><video ref={video} autoPlay playsInline muted /><p>{message}</p><label className="scan-photo">Take barcode photo<input type="file" accept="image/*" capture="environment" onChange={scanPhoto} /></label><small>For 1D barcodes, fill most of the frame width and hold the device steady. A paired Bluetooth/USB scanner also works here - configure it as a keyboard with an Enter suffix.</small></div>
 }
