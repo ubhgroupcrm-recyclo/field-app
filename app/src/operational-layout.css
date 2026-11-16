@@ -1,0 +1,1 @@
+.two-col{grid-template-columns:minmax(0,1fr) 390px}@media(max-width:720px){.two-col{grid-template-columns:1fr}}

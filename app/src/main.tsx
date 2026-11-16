@@ -1,0 +1,25 @@
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import { App } from './App'
+import './styles.css'
+import './roles.css'
+import './projects.css'
+import './project-edit.css'
+import './locations.css'
+import './location-grid.css'
+import './operational-layout.css'
+import './delivery.css'
+import './delivery-kpis.css'
+import './removal.css'
+import './removal-workflow.css'
+import './recycling-loads.css'
+import './certificate.css'
+import './inventory.css'
+import './installation.css'
+import './field-touch.css'
+import './field-home.css'
+import './field-outdoor.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode><App /></React.StrictMode>,
+)

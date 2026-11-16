@@ -1,0 +1,15 @@
+# Vite build output and local dependencies
+app/dist/
+app/node_modules/
+dist/
+*.tsbuildinfo
+
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Tooling / OS files
+.openai/
+.DS_Store
+Thumbs.db
