@@ -19,6 +19,7 @@ import './installation.css'
 import './field-touch.css'
 import './field-home.css'
 import './field-outdoor.css'
+import './auth-outdoor.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><App /></React.StrictMode>,
