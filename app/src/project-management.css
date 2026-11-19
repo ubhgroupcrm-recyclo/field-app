@@ -1,0 +1,4 @@
+.manage-projects { white-space: nowrap; }
+.modal-backdrop { z-index: 10; }
+.projects-modal { width: min(720px, 100%); max-height: calc(100vh - 40px); overflow: auto; }
+.projects-modal .projects-manager { margin-top: 22px; }
