@@ -167,7 +167,7 @@ type Staff = { id: string; display_name: string; staff_id: string; role: string 
 type Assignment = { user_id: string; role: string }
 function AccessManager({ projectId, projectName, canManage }: { projectId: string; projectName: string; canManage: boolean }) {
   const [staff, setStaff] = useState<Staff[]>([]), [members, setMembers] = useState<Assignment[]>([]), [roles, setRoles] = useState<Assignment[]>([])
-  const [selected, setSelected] = useState(''), [selectedRoles, setSelectedRoles] = useState<string[]>([]), [globalAdmin, setGlobalAdmin] = useState(false), [message, setMessage] = useState(''), [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState(''), [selectedRoles, setSelectedRoles] = useState<string[]>([]), [globalAdmin, setGlobalAdmin] = useState(false), [resetPin, setResetPin] = useState(''), [resettingPin, setResettingPin] = useState(false), [message, setMessage] = useState(''), [loading, setLoading] = useState(true)
   const load = async () => {
     setLoading(true); setMessage('')
     const [p, m, r] = await Promise.all([
@@ -181,7 +181,7 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
   useEffect(() => { load() }, [projectId])
   const projectRolesFor = (id: string) => roles.filter(x => x.user_id === id).map(x => x.role)
   const rolesFor = (id: string) => [...(staff.find(x => x.id === id)?.role === 'admin' ? ['Rayet Administrator'] : []), ...projectRolesFor(id)]
-  const select = (id: string) => { setSelected(id); setSelectedRoles(projectRolesFor(id)); setGlobalAdmin(staff.find(x => x.id === id)?.role === 'admin') }
+  const select = (id: string) => { setSelected(id); setSelectedRoles(projectRolesFor(id)); setGlobalAdmin(staff.find(x => x.id === id)?.role === 'admin'); setResetPin('') }
   const toggle = (role: string) => setSelectedRoles(current => current.includes(role) ? current.filter(x => x !== role) : [...current, role])
   const save = async () => {
     if (!selected) return setMessage('Choose a person first.')
@@ -200,6 +200,17 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
     const { error } = await supabase.from('project_members').delete().eq('project_id', projectId).eq('user_id', userId)
     setMessage(error ? error.message : 'Person removed from this project.'); if (!error) load()
   }
+  const resetUserPin = async () => {
+    if (!selected) return setMessage('Choose a person first.')
+    if (!/^\d{4}$/.test(resetPin)) return setMessage('Enter a four-digit PIN.')
+    const name = staff.find(person => person.id === selected)?.display_name ?? 'this person'
+    if (!confirm(`Reset ${name}'s PIN? They will sign in using the new four-digit PIN.`)) return
+    setResettingPin(true); setMessage('')
+    const { error } = await supabase.functions.invoke('reset-user-pin', { body: { userId: selected, pin: resetPin } })
+    setResettingPin(false)
+    if (error) return setMessage(error.message || 'Could not reset the PIN.')
+    setResetPin(''); setMessage(`PIN reset for ${name}.`)
+  }
   const assigned = members.map(m => ({ staff: staff.find(x => x.id === m.user_id), userId: m.user_id })).filter(x => x.staff)
   return <div className="access-manager">
     <p className="muted">Showing assignments for <b>{projectName}</b>. Roles are assigned per project, so a person can hold different roles on different projects.</p>
@@ -207,6 +218,7 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
       <div className="editor-top"><label>Person to assign to {projectName}<select value={selected} onChange={e => select(e.target.value)}><option value="">Select a person…</option>{staff.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}</select></label></div>
       <div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={selectedRoles.includes(role.id)} onChange={() => toggle(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={globalAdmin} onChange={e => setGlobalAdmin(e.target.checked)} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div>
       <button className="button primary" onClick={save}>Save project roles</button>
+      {selected && <div className="pin-reset"><b>Reset sign-in PIN</b><small>Sets this person’s app password securely. They will sign in using this four-digit PIN.</small><div><input type="password" inputMode="numeric" maxLength={4} value={resetPin} onChange={event => setResetPin(event.target.value.replace(/\D/g, ''))} placeholder="Four-digit PIN" /><button className="button" disabled={resettingPin} onClick={resetUserPin}>{resettingPin ? 'Resetting…' : 'Reset PIN'}</button></div></div>}
     </div>}
     {message && <p className="form-message">{message}</p>}
     <div className="assignment-list">{loading ? <Empty text="Loading access…" /> : assigned.length ? assigned.map(({ staff: person, userId }) => <div className="assignment" key={userId}><span className="avatar">{initials(person!.display_name)}</span><span className="assignment-name"><b>{person!.display_name}</b><small>{rolesFor(userId).map(x => projectRoles.find(r => r.id === x)?.label ?? x).join(' · ') || 'No roles assigned'}</small></span>{canManage && <span className="assignment-actions"><button className="text-button" onClick={() => select(userId)}>Edit</button><button className="text-button danger-text" onClick={() => remove(userId)}>Remove</button></span>}</div>) : <Empty text="Nobody is assigned to this project yet." />}</div>
