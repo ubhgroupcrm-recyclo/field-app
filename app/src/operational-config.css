@@ -1,0 +1,5 @@
+.operational-config { display: grid; gap: 28px; }
+.operational-config h3 { margin: 0 0 13px; font-size: 15px; }
+.combiner-config { padding-bottom: 22px; border-bottom: 1px solid #e4ebe7; }
+.combiner-config .form-line { max-width: 620px; }
+.combiner-config .combiner-list { margin-top: 12px; }
