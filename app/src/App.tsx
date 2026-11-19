@@ -99,7 +99,7 @@ function AppHeader({ profile, project, memberships, onProject, onSignOut, field 
 
 function AdminApp({ profile, project, memberships, projectId, onProject, onSignOut }: { profile: Profile; project: Project; memberships: Membership[]; projectId: string; onProject: (id: string) => void; onSignOut: () => void }) {
   const [view, setView] = useState<View>('admin')
-  return <main className="shell"><AppHeader profile={profile} project={project} memberships={memberships} onProject={onProject} onSignOut={onSignOut} /><nav className="nav">{nav.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><item.icon size={18} />{item.label}</button>)}</nav>{view === 'admin' ? <AdminHome projectId={projectId} isAdmin={profile.role === 'admin'} /> : view === 'delivery' ? <DeliveryPlan projectId={projectId} isAdmin={profile.role === 'admin'} /> : view === 'removal' ? <RemovalHub projectId={projectId} profile={profile} /> : view === 'installation' ? <InstallationRegister projectId={projectId} /> : <RegisterPlaceholder view={view} />}</main>
+  return <main className="shell"><AppHeader profile={profile} project={project} memberships={memberships} onProject={onProject} onSignOut={onSignOut} /><nav className="nav">{nav.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><item.icon size={18} />{item.label}</button>)}</nav>{view === 'admin' ? <AdminHome projectId={projectId} projectName={project.name} isAdmin={profile.role === 'admin'} /> : view === 'delivery' ? <DeliveryPlan projectId={projectId} isAdmin={profile.role === 'admin'} /> : view === 'removal' ? <RemovalHub projectId={projectId} profile={profile} /> : view === 'installation' ? <InstallationRegister projectId={projectId} /> : <RegisterPlaceholder view={view} />}</main>
 }
 
 function Accordion({ title, icon, children, defaultOpen = false }: { title: string; icon: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
@@ -107,7 +107,7 @@ function Accordion({ title, icon, children, defaultOpen = false }: { title: stri
   return <section className="accordion"><button className="accordion-head" onClick={() => setOpen(!open)} aria-expanded={open}><span className="accordion-title">{icon}{title}</span><span className="expand">{open ? 'Collapse' : 'Expand'}<ChevronDown size={17} className={open ? 'up' : ''} /></span></button>{open && <div className="accordion-content">{children}</div>}</section>
 }
 
-function AdminHome({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
+function AdminHome({ projectId, projectName, isAdmin }: { projectId: string; projectName: string; isAdmin: boolean }) {
   const [locations, setLocations] = useState<Location[]>([]), [boxes, setBoxes] = useState<Combiner[]>([])
   const [field, setField] = useState('1'), [code, setCode] = useState(''), [message, setMessage] = useState('')
   const refresh = async () => { const [l, b] = await Promise.all([supabase.from('site_locations').select('*').eq('project_id', projectId).order('name'), supabase.from('combiner_boxes').select('*').eq('project_id', projectId).order('field_number').order('box_code')]); setLocations(sortLocations((l.data ?? []) as Location[])); setBoxes(b.data ?? []) }
@@ -116,8 +116,8 @@ function AdminHome({ projectId, isAdmin }: { projectId: string; isAdmin: boolean
   return <div className="admin-page">
     <div className="page-title"><div><h1>Admin</h1><p>Project configuration, access and operational control.</p></div></div>
     <Accordion title="Projects" icon={<Wrench size={20} />}><ProjectsManager currentProjectId={projectId} canManage={isAdmin} /></Accordion>
-    <Accordion title="Operational locations & combiner boxes" icon={<Boxes size={20} />}><div className="two-col"><div><h3>Locations</h3><div className="location-list">{locations.length ? locations.map(l => <LocationCard key={l.id} location={l} />) : <Empty text="Run the operator events migration to create the project locations." />}</div></div><div><h3>Add combiner box</h3>{isAdmin ? <><div className="form-line"><select value={field} onChange={e => setField(e.target.value)}>{[1,2,3,4,5,6].map(x => <option key={x} value={x}>Field {x}</option>)}</select><input value={code} placeholder="e.g. CB-F1-001" onChange={e => setCode(e.target.value)} /><button className="button primary" onClick={add}>Add</button></div>{message && <p className="form-message">{message}</p>}</> : <p className="muted">Only a Rayet Administrator can add project configuration.</p>}<div className="combiner-list">{boxes.length ? boxes.map(b => <span className="pill" key={b.id}>Field {b.field_number} · {b.box_code}</span>) : <Empty text="No combiner boxes added yet." />}</div></div></div></Accordion>
-    <Accordion title="People & project roles" icon={<UsersRound size={20} />}><AccessManager projectId={projectId} canManage={isAdmin} /></Accordion>
+    <Accordion title={`Operational locations & combiner boxes — ${projectName}`} icon={<Boxes size={20} />}><div className="two-col"><div><h3>Locations</h3><div className="location-list">{locations.length ? locations.map(l => <LocationCard key={l.id} location={l} />) : <Empty text="Run the operator events migration to create the project locations." />}</div></div><div><h3>Add combiner box</h3>{isAdmin ? <><div className="form-line"><select value={field} onChange={e => setField(e.target.value)}>{[1,2,3,4,5,6].map(x => <option key={x} value={x}>Field {x}</option>)}</select><input value={code} placeholder="e.g. CB-F1-001" onChange={e => setCode(e.target.value)} /><button className="button primary" onClick={add}>Add</button></div>{message && <p className="form-message">{message}</p>}</> : <p className="muted">Only a Rayet Administrator can add project configuration.</p>}<div className="combiner-list">{boxes.length ? boxes.map(b => <span className="pill" key={b.id}>Field {b.field_number} · {b.box_code}</span>) : <Empty text="No combiner boxes added yet." />}</div></div></div></Accordion>
+    <Accordion title={`People & project roles — ${projectName}`} icon={<UsersRound size={20} />}><AccessManager projectId={projectId} projectName={projectName} canManage={isAdmin} /></Accordion>
   </div>
 }
 
@@ -164,7 +164,7 @@ const projectRoles = [
 
 type Staff = { id: string; display_name: string; staff_id: string; role: string }
 type Assignment = { user_id: string; role: string }
-function AccessManager({ projectId, canManage }: { projectId: string; canManage: boolean }) {
+function AccessManager({ projectId, projectName, canManage }: { projectId: string; projectName: string; canManage: boolean }) {
   const [staff, setStaff] = useState<Staff[]>([]), [members, setMembers] = useState<Assignment[]>([]), [roles, setRoles] = useState<Assignment[]>([])
   const [selected, setSelected] = useState(''), [selectedRoles, setSelectedRoles] = useState<string[]>([]), [globalAdmin, setGlobalAdmin] = useState(false), [message, setMessage] = useState(''), [loading, setLoading] = useState(true)
   const load = async () => {
@@ -201,9 +201,9 @@ function AccessManager({ projectId, canManage }: { projectId: string; canManage:
   }
   const assigned = members.map(m => ({ staff: staff.find(x => x.id === m.user_id), userId: m.user_id })).filter(x => x.staff)
   return <div className="access-manager">
-    <p className="muted">Roles are assigned per project. A person can hold more than one role.</p>
+    <p className="muted">Showing assignments for <b>{projectName}</b>. Roles are assigned per project, so a person can hold different roles on different projects.</p>
     {canManage && <div className="role-editor">
-      <div className="editor-top"><label>Person<select value={selected} onChange={e => select(e.target.value)}><option value="">Select a person…</option>{staff.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}</select></label></div>
+      <div className="editor-top"><label>Person to assign to {projectName}<select value={selected} onChange={e => select(e.target.value)}><option value="">Select a person…</option>{staff.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}</select></label></div>
       <div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={selectedRoles.includes(role.id)} onChange={() => toggle(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={globalAdmin} onChange={e => setGlobalAdmin(e.target.checked)} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div>
       <button className="button primary" onClick={save}>Save project roles</button>
     </div>}
