@@ -168,6 +168,8 @@ type Assignment = { user_id: string; role: string }
 function AccessManager({ projectId, projectName, canManage }: { projectId: string; projectName: string; canManage: boolean }) {
   const [staff, setStaff] = useState<Staff[]>([]), [members, setMembers] = useState<Assignment[]>([]), [roles, setRoles] = useState<Assignment[]>([])
   const [selected, setSelected] = useState(''), [selectedRoles, setSelectedRoles] = useState<string[]>([]), [globalAdmin, setGlobalAdmin] = useState(false), [resetPin, setResetPin] = useState(''), [resettingPin, setResettingPin] = useState(false), [message, setMessage] = useState(''), [loading, setLoading] = useState(true)
+  const [showNewUser, setShowNewUser] = useState(false), [creatingUser, setCreatingUser] = useState(false)
+  const [newUser, setNewUser] = useState({ displayName: '', email: '', pin: '', roles: [] as string[], globalAdmin: false })
   const load = async () => {
     setLoading(true); setMessage('')
     const [p, m, r] = await Promise.all([
@@ -183,6 +185,7 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
   const rolesFor = (id: string) => [...(staff.find(x => x.id === id)?.role === 'admin' ? ['Rayet Administrator'] : []), ...projectRolesFor(id)]
   const select = (id: string) => { setSelected(id); setSelectedRoles(projectRolesFor(id)); setGlobalAdmin(staff.find(x => x.id === id)?.role === 'admin'); setResetPin('') }
   const toggle = (role: string) => setSelectedRoles(current => current.includes(role) ? current.filter(x => x !== role) : [...current, role])
+  const toggleNewUserRole = (role: string) => setNewUser(current => ({ ...current, roles: current.roles.includes(role) ? current.roles.filter(item => item !== role) : [...current.roles, role] }))
   const save = async () => {
     if (!selected) return setMessage('Choose a person first.')
     if (!selectedRoles.length) return setMessage('Choose at least one project role.')
@@ -211,15 +214,26 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
     if (error) return setMessage(error.message || 'Could not reset the PIN.')
     setResetPin(''); setMessage(`PIN reset for ${name}.`)
   }
+  const createUser = async () => {
+    if (!newUser.displayName.trim()) return setMessage('Enter the person’s name.')
+    if (!/^\S+@\S+\.\S+$/.test(newUser.email.trim())) return setMessage('Enter a valid work email.')
+    if (!/^\d{4}$/.test(newUser.pin)) return setMessage('Enter a four-digit PIN.')
+    if (!newUser.roles.length) return setMessage('Choose at least one project role.')
+    setCreatingUser(true); setMessage('')
+    const { error } = await supabase.functions.invoke('create-project-user', { body: { projectId, displayName: newUser.displayName.trim(), email: newUser.email.trim(), pin: newUser.pin, roles: newUser.roles, globalAdmin: newUser.globalAdmin } })
+    setCreatingUser(false)
+    if (error) return setMessage(error.message || 'Could not create the user.')
+    setNewUser({ displayName: '', email: '', pin: '', roles: [], globalAdmin: false }); setShowNewUser(false); setMessage('User created and assigned to this project.'); load()
+  }
   const assigned = members.map(m => ({ staff: staff.find(x => x.id === m.user_id), userId: m.user_id })).filter(x => x.staff)
   return <div className="access-manager">
     <p className="muted">Showing assignments for <b>{projectName}</b>. Roles are assigned per project, so a person can hold different roles on different projects.</p>
-    {canManage && <div className="role-editor">
+    {canManage && <><button className="button primary" onClick={() => { setShowNewUser(open => !open); setMessage('') }}>{showNewUser ? 'Cancel' : 'Add user'}</button>{showNewUser && <div className="new-user-form"><h3>Add user to {projectName}</h3><div className="new-user-fields"><label>Name<input value={newUser.displayName} onChange={event => setNewUser(current => ({ ...current, displayName: event.target.value }))} placeholder="Full name" /></label><label>Work email<input type="email" value={newUser.email} onChange={event => setNewUser(current => ({ ...current, email: event.target.value }))} placeholder="name@company.co.uk" /></label><label>Four-digit PIN<input type="password" inputMode="numeric" maxLength={4} value={newUser.pin} onChange={event => setNewUser(current => ({ ...current, pin: event.target.value.replace(/\D/g, '') }))} placeholder="1234" /></label></div><div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={newUser.roles.includes(role.id)} onChange={() => toggleNewUserRole(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={newUser.globalAdmin} onChange={event => setNewUser(current => ({ ...current, globalAdmin: event.target.checked }))} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div><button className="button primary" disabled={creatingUser} onClick={createUser}>{creatingUser ? 'Creating…' : 'Create user'}</button></div>}<div className="role-editor">
       <div className="editor-top"><label>Person to assign to {projectName}<select value={selected} onChange={e => select(e.target.value)}><option value="">Select a person…</option>{staff.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}</select></label></div>
       <div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={selectedRoles.includes(role.id)} onChange={() => toggle(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={globalAdmin} onChange={e => setGlobalAdmin(e.target.checked)} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div>
       <button className="button primary" onClick={save}>Save project roles</button>
       {selected && <div className="pin-reset"><b>Reset sign-in PIN</b><small>Sets this person’s app password securely. They will sign in using this four-digit PIN.</small><div><input type="password" inputMode="numeric" maxLength={4} value={resetPin} onChange={event => setResetPin(event.target.value.replace(/\D/g, ''))} placeholder="Four-digit PIN" /><button className="button" disabled={resettingPin} onClick={resetUserPin}>{resettingPin ? 'Resetting…' : 'Reset PIN'}</button></div></div>}
-    </div>}
+    </div></>}
     {message && <p className="form-message">{message}</p>}
     <div className="assignment-list">{loading ? <Empty text="Loading access…" /> : assigned.length ? assigned.map(({ staff: person, userId }) => <div className="assignment" key={userId}><span className="avatar">{initials(person!.display_name)}</span><span className="assignment-name"><b>{person!.display_name}</b><small>{rolesFor(userId).map(x => projectRoles.find(r => r.id === x)?.label ?? x).join(' · ') || 'No roles assigned'}</small></span>{canManage && <span className="assignment-actions"><button className="text-button" onClick={() => select(userId)}>Edit</button><button className="text-button danger-text" onClick={() => remove(userId)}>Remove</button></span>}</div>) : <Empty text="Nobody is assigned to this project yet." />}</div>
   </div>
