@@ -11,6 +11,7 @@ import { ChecklistWorkflow } from './ChecklistWorkflow'
 type Membership = { project_id: string; projects: Project }
 type Location = { id: string; name: string; location_type: string; field_number: number | null }
 type Combiner = { id: string; field_number: number; box_code: string }
+type RegisteredDevice = { id: string; device_token: string; name: string; device_type: string; assigned_user_id: string | null; is_active: boolean }
 type Delivery = { id: string; order_number: string; proforma_reference: string | null; expected_pallets: number; expected_modules: number | null; wattage_breakdown: string; qr_token: string; status: string }
 type IsolationCertificate = { id: string; certificate_reference: string; created_at: string }
 type InventoryPallet = { id: string; pallet_number: string; model_type: string | null; expected_panel_count: number }
@@ -19,6 +20,12 @@ type View = 'admin' | 'delivery' | 'removal' | 'installation' | 'reporting'
 function sortLocations(locations: Location[]) {
   const order: Record<string, number> = { compound_delivery_in: 0, compound_damaged_area: 1, compound_recycling_out: 2, field_storage_in: 0, field_damaged_area: 1, field_storage_out: 2 }
   return [...locations].sort((a, b) => (a.field_number ?? -1) - (b.field_number ?? -1) || order[a.location_type] - order[b.location_type])
+}
+function getBrowserDeviceToken() {
+  const key = 'rayet-device-token'
+  let token = localStorage.getItem(key)
+  if (!token) { token = crypto.randomUUID(); localStorage.setItem(key, token) }
+  return token
 }
 
 const nav: { id: View; label: string; icon: typeof Wrench }[] = [
@@ -38,6 +45,8 @@ export function App() {
   const [profile, setProfile] = useState<Profile>()
   const [memberships, setMemberships] = useState<Membership[]>([])
   const [projectId, setProjectId] = useState(localStorage.getItem('rayet-project-id') ?? '')
+  const [deviceToken] = useState(getBrowserDeviceToken)
+  const [device, setDevice] = useState<RegisteredDevice>()
 
   useEffect(() => {
     let active = true
@@ -66,14 +75,19 @@ export function App() {
     return () => { active = false; listener.subscription.unsubscribe() }
   }, [])
 
+  useEffect(() => {
+    if (!userId || !projectId) return
+    supabase.from('registered_devices').select('id,device_token,name,device_type,assigned_user_id,is_active').eq('project_id', projectId).eq('device_token', deviceToken).eq('is_active', true).maybeSingle().then(({ data }) => setDevice(data as RegisteredDevice | undefined))
+  }, [userId, projectId, deviceToken])
+
   const project = memberships.find(x => x.project_id === projectId)?.projects
   const chooseProject = (id: string) => { setProjectId(id); localStorage.setItem('rayet-project-id', id) }
   if (!sessionReady) return <div className="loading">Loading Rayet…</div>
   if (!userId) return <SignIn />
   if (!project) return <NoProject onSignOut={() => supabase.auth.signOut()} />
   return fieldMode
-    ? <FieldApp profile={profile!} project={project} projectId={projectId} onSignOut={() => supabase.auth.signOut()} />
-    : <AdminApp profile={profile!} project={project} memberships={memberships} projectId={projectId} onProject={chooseProject} onSignOut={() => supabase.auth.signOut()} />
+    ? <FieldApp profile={profile!} project={project} projectId={projectId} device={device} onSignOut={() => supabase.auth.signOut()} />
+    : <AdminApp profile={profile!} project={project} memberships={memberships} projectId={projectId} deviceToken={deviceToken} device={device} onDeviceChange={setDevice} onProject={chooseProject} onSignOut={() => supabase.auth.signOut()} />
 }
 
 function SignIn() {
@@ -93,15 +107,15 @@ function NoProject({ onSignOut }: { onSignOut: () => void }) {
 
 function Brand() { return <div className="brand"><span className="brand-mark">R</span><span>Rayet<small>Shoals Hook</small></span></div> }
 
-function AppHeader({ profile, project, memberships, onProject, onManageProjects, onSignOut, field }: { profile: Profile; project: Project; memberships?: Membership[]; onProject?: (id: string) => void; onManageProjects?: () => void; onSignOut: () => void; field?: boolean }) {
-  return <header className="header"><Brand /><div className="header-right">{memberships && <label className="project-select">Project<select value={project.id} onChange={e => onProject?.(e.target.value)}>{memberships.map(x => <option value={x.project_id} key={x.project_id}>{x.projects.name}</option>)}</select></label>}{onManageProjects && <button className="button manage-projects" onClick={onManageProjects}>Manage projects</button>} {field && <span className="project-badge">{project.name}</span>}<span className="user-chip" title={profile.display_name}><span>{initials(profile.display_name)}</span>{profile.display_name}</span><button className="button signout" onClick={onSignOut}><LogOut size={16} />Sign out</button></div></header>
+function AppHeader({ profile, project, memberships, device, onProject, onManageProjects, onSignOut, field }: { profile: Profile; project: Project; memberships?: Membership[]; device?: RegisteredDevice; onProject?: (id: string) => void; onManageProjects?: () => void; onSignOut: () => void; field?: boolean }) {
+  return <header className="header"><Brand /><div className="header-right">{memberships && <label className="project-select">Project<select value={project.id} onChange={e => onProject?.(e.target.value)}>{memberships.map(x => <option value={x.project_id} key={x.project_id}>{x.projects.name}</option>)}</select></label>}{onManageProjects && <button className="button manage-projects" onClick={onManageProjects}>Manage projects</button>} {field && <span className="project-badge">{project.name}</span>}<span className={`device-chip ${device ? 'registered' : ''}`} title={device ? `Registered ${device.device_type}` : 'This browser has not been registered'}>{device ? device.name : 'Personal device'}</span><span className="user-chip" title={profile.display_name}><span>{initials(profile.display_name)}</span>{profile.display_name}</span><button className="button signout" onClick={onSignOut}><LogOut size={16} />Sign out</button></div></header>
 }
 
-function AdminApp({ profile, project, memberships, projectId, onProject, onSignOut }: { profile: Profile; project: Project; memberships: Membership[]; projectId: string; onProject: (id: string) => void; onSignOut: () => void }) {
+function AdminApp({ profile, project, memberships, projectId, deviceToken, device, onDeviceChange, onProject, onSignOut }: { profile: Profile; project: Project; memberships: Membership[]; projectId: string; deviceToken: string; device?: RegisteredDevice; onDeviceChange: (device?: RegisteredDevice) => void; onProject: (id: string) => void; onSignOut: () => void }) {
   const [view, setView] = useState<View>('admin')
   const [managingProjects, setManagingProjects] = useState(false)
   const isAdmin = profile.role === 'admin'
-  return <main className="shell"><AppHeader profile={profile} project={project} memberships={memberships} onProject={onProject} onManageProjects={isAdmin ? () => setManagingProjects(true) : undefined} onSignOut={onSignOut} /><nav className="nav">{nav.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><item.icon size={18} />{item.label}</button>)}</nav>{view === 'admin' ? <AdminHome projectId={projectId} projectName={project.name} isAdmin={isAdmin} /> : view === 'delivery' ? <DeliveryPlan projectId={projectId} isAdmin={isAdmin} /> : view === 'removal' ? <RemovalHub projectId={projectId} profile={profile} /> : view === 'installation' ? <InstallationRegister projectId={projectId} /> : <RegisterPlaceholder view={view} />}{managingProjects && <div className="modal-backdrop"><section className="scan-modal projects-modal"><button className="close" onClick={() => setManagingProjects(false)}>Close</button><h2>Manage projects</h2><p>Add a project or edit its details. The project selector controls which project you are administering.</p><ProjectsManager currentProjectId={projectId} canManage={isAdmin} /></section></div>}</main>
+  return <main className="shell"><AppHeader profile={profile} project={project} memberships={memberships} device={device} onProject={onProject} onManageProjects={isAdmin ? () => setManagingProjects(true) : undefined} onSignOut={onSignOut} /><nav className="nav">{nav.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} onClick={() => setView(item.id)}><item.icon size={18} />{item.label}</button>)}</nav>{view === 'admin' ? <AdminHome projectId={projectId} projectName={project.name} deviceToken={deviceToken} device={device} onDeviceChange={onDeviceChange} isAdmin={isAdmin} /> : view === 'delivery' ? <DeliveryPlan projectId={projectId} isAdmin={isAdmin} /> : view === 'removal' ? <RemovalHub projectId={projectId} profile={profile} /> : view === 'installation' ? <InstallationRegister projectId={projectId} /> : <RegisterPlaceholder view={view} />}{managingProjects && <div className="modal-backdrop"><section className="scan-modal projects-modal"><button className="close" onClick={() => setManagingProjects(false)}>Close</button><h2>Manage projects</h2><p>Add a project or edit its details. The project selector controls which project you are administering.</p><ProjectsManager currentProjectId={projectId} canManage={isAdmin} /></section></div>}</main>
 }
 
 function Accordion({ title, icon, children, defaultOpen = false }: { title: string; icon: ReactNode; children: ReactNode; defaultOpen?: boolean }) {
@@ -109,7 +123,7 @@ function Accordion({ title, icon, children, defaultOpen = false }: { title: stri
   return <section className="accordion"><button className="accordion-head" onClick={() => setOpen(!open)} aria-expanded={open}><span className="accordion-title">{icon}{title}</span><span className="expand">{open ? 'Collapse' : 'Expand'}<ChevronDown size={17} className={open ? 'up' : ''} /></span></button>{open && <div className="accordion-content">{children}</div>}</section>
 }
 
-function AdminHome({ projectId, projectName, isAdmin }: { projectId: string; projectName: string; isAdmin: boolean }) {
+function AdminHome({ projectId, projectName, deviceToken, device, onDeviceChange, isAdmin }: { projectId: string; projectName: string; deviceToken: string; device?: RegisteredDevice; onDeviceChange: (device?: RegisteredDevice) => void; isAdmin: boolean }) {
   const [locations, setLocations] = useState<Location[]>([]), [boxes, setBoxes] = useState<Combiner[]>([])
   const [field, setField] = useState('1'), [code, setCode] = useState(''), [message, setMessage] = useState('')
   const refresh = async () => { const [l, b] = await Promise.all([supabase.from('site_locations').select('*').eq('project_id', projectId).order('name'), supabase.from('combiner_boxes').select('*').eq('project_id', projectId).order('field_number').order('box_code')]); setLocations(sortLocations((l.data ?? []) as Location[])); setBoxes(b.data ?? []) }
@@ -119,6 +133,7 @@ function AdminHome({ projectId, projectName, isAdmin }: { projectId: string; pro
     <div className="page-title"><div><h1>{projectName}</h1><p>Project configuration, access and operational control.</p></div></div>
     <Accordion title="Operational locations & combiner boxes" icon={<Boxes size={20} />}><div className="operational-config"><section className="combiner-config"><h3>Add combiner box</h3>{isAdmin ? <><div className="form-line"><select value={field} onChange={e => setField(e.target.value)}>{[1,2,3,4,5,6].map(x => <option key={x} value={x}>Field {x}</option>)}</select><input value={code} placeholder="e.g. CB-F1-001" onChange={e => setCode(e.target.value)} /><button className="button primary" onClick={add}>Add</button></div>{message && <p className="form-message">{message}</p>}</> : <p className="muted">Only a Rayet Administrator can add project configuration.</p>}{boxes.length > 0 && <div className="combiner-list">{boxes.map(b => <span className="pill" key={b.id}>Field {b.field_number} · {b.box_code}</span>)}</div>}</section><section><h3>Locations</h3><div className="location-list">{locations.length ? locations.map(l => <LocationCard key={l.id} location={l} />) : <Empty text="Run the operator events migration to create the project locations." />}</div></section></div></Accordion>
     <Accordion title="People & project roles" icon={<UsersRound size={20} />}><AccessManager projectId={projectId} projectName={projectName} canManage={isAdmin} /></Accordion>
+    <Accordion title="Devices & 2D scanners" icon={<ScanLine size={20} />}><DevicesManager projectId={projectId} deviceToken={deviceToken} currentDevice={device} onDeviceChange={onDeviceChange} canManage={isAdmin} /></Accordion>
   </div>
 }
 
@@ -237,6 +252,42 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
     {message && <p className="form-message">{message}</p>}
     <div className="assignment-list">{loading ? <Empty text="Loading access…" /> : assigned.length ? assigned.map(({ staff: person, userId }) => <div className="assignment" key={userId}><span className="avatar">{initials(person!.display_name)}</span><span className="assignment-name"><b>{person!.display_name}</b><small>{rolesFor(userId).map(x => projectRoles.find(r => r.id === x)?.label ?? x).join(' · ') || 'No roles assigned'}</small></span>{canManage && <span className="assignment-actions"><button className="text-button" onClick={() => select(userId)}>Edit</button><button className="text-button danger-text" onClick={() => remove(userId)}>Remove</button></span>}</div>) : <Empty text="Nobody is assigned to this project yet." />}</div>
   </div>
+}
+
+function DevicesManager({ projectId, deviceToken, currentDevice, onDeviceChange, canManage }: { projectId: string; deviceToken: string; currentDevice?: RegisteredDevice; onDeviceChange: (device?: RegisteredDevice) => void; canManage: boolean }) {
+  const [devices, setDevices] = useState<RegisteredDevice[]>([]), [staff, setStaff] = useState<Staff[]>([])
+  const [name, setName] = useState(''), [deviceType, setDeviceType] = useState('2D scanner / tablet'), [assignedUserId, setAssignedUserId] = useState(''), [message, setMessage] = useState(''), [loading, setLoading] = useState(true)
+  const load = async () => {
+    setLoading(true)
+    const [deviceResult, staffResult] = await Promise.all([
+      supabase.from('registered_devices').select('id,device_token,name,device_type,assigned_user_id,is_active').eq('project_id', projectId).eq('is_active', true).order('name'),
+      supabase.from('profiles').select('id,display_name,staff_id,role').order('display_name'),
+    ])
+    if (deviceResult.error || staffResult.error) setMessage(deviceResult.error?.message ?? staffResult.error?.message ?? 'Could not load devices.')
+    setDevices((deviceResult.data ?? []) as RegisteredDevice[]); setStaff((staffResult.data ?? []) as Staff[]); setLoading(false)
+  }
+  useEffect(() => { load() }, [projectId])
+  const register = async () => {
+    if (!name.trim()) return setMessage('Enter a device name.')
+    const { data, error } = await supabase.from('registered_devices').insert({ project_id: projectId, device_token: deviceToken, name: name.trim(), device_type: deviceType, assigned_user_id: assignedUserId || null, user_agent: navigator.userAgent }).select('id,device_token,name,device_type,assigned_user_id,is_active').single()
+    if (error) return setMessage(error.message)
+    setMessage('This device is now registered.'); setName(''); setAssignedUserId(''); onDeviceChange(data as RegisteredDevice); load()
+  }
+  const saveAssignment = async (device: RegisteredDevice, userId: string) => {
+    const { data, error } = await supabase.from('registered_devices').update({ assigned_user_id: userId || null }).eq('id', device.id).select('id,device_token,name,device_type,assigned_user_id,is_active').single()
+    if (error) return setMessage(error.message)
+    if (device.device_token === deviceToken) onDeviceChange(data as RegisteredDevice)
+    setMessage('Device assignment saved.'); load()
+  }
+  const deactivate = async (device: RegisteredDevice) => {
+    if (!confirm(`Remove ${device.name} from the registered-device list?`)) return
+    const { error } = await supabase.from('registered_devices').update({ is_active: false }).eq('id', device.id)
+    if (error) return setMessage(error.message)
+    if (device.device_token === deviceToken) onDeviceChange(undefined)
+    setMessage('Device removed.'); load()
+  }
+  const userName = (id: string | null) => staff.find(person => person.id === id)?.display_name ?? 'Unassigned'
+  return <div className="devices-manager"><p className="muted">This browser is currently <b>{currentDevice ? `registered as ${currentDevice.name}` : 'an unregistered personal device'}</b>. Register each scanner or tablet from the device itself.</p>{canManage && !currentDevice && <div className="device-register"><h3>Register this device</h3><div className="device-form"><input value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Field 1 scanner" /><select value={deviceType} onChange={event => setDeviceType(event.target.value)}><option>2D scanner / tablet</option><option>Rugged tablet</option><option>Mobile phone</option></select><select value={assignedUserId} onChange={event => setAssignedUserId(event.target.value)}><option value="">Unassigned</option>{staff.map(person => <option value={person.id} key={person.id}>{person.display_name}</option>)}</select><button className="button primary" onClick={register}>Register device</button></div></div>}{message && <p className="form-message">{message}</p>}<div className="device-list">{loading ? <Empty text="Loading devices…" /> : devices.length ? devices.map(device => <article className="device-row" key={device.id}><div><b>{device.name}</b><small>{device.device_type}{device.device_token === deviceToken ? ' · This device' : ''}</small></div>{canManage ? <span className="device-actions"><select value={device.assigned_user_id ?? ''} onChange={event => saveAssignment(device, event.target.value)}><option value="">Unassigned</option>{staff.map(person => <option value={person.id} key={person.id}>{person.display_name}</option>)}</select><button className="text-button danger-text" onClick={() => deactivate(device)}>Remove</button></span> : <span className="pill">{userName(device.assigned_user_id)}</span>}</article>) : <Empty text="No scanners or tablets are registered for this project." />}</div></div>
 }
 
 function LegacyDeliveryPlan({ projectId, isAdmin }: { projectId: string; isAdmin: boolean }) {
@@ -375,13 +426,13 @@ function LocationCard({ location }: { location: Location }) {
   return <article className={`location-card ${isDamaged ? 'damaged' : isOut ? 'out' : 'in'}`}><span className="location-icon"><Icon size={22} /></span><span><b>{location.name}</b></span></article>
 }
 
-function FieldApp({ profile, project, projectId, onSignOut }: { profile: Profile; project: Project; projectId: string; onSignOut: () => void }) {
+function FieldApp({ profile, project, projectId, device, onSignOut }: { profile: Profile; project: Project; projectId: string; device?: RegisteredDevice; onSignOut: () => void }) {
   const [roles, setRoles] = useState<string[]>([]), [modal, setModal] = useState<'delivery' | 'install' | 'removal' | 'recycling' | 'pallet_delivery' | 'panel_visual' | 'telehandler_pre_use'>(), [workflowCode, setWorkflowCode] = useState('')
   useEffect(() => { supabase.from('project_member_roles').select('role').eq('project_id', projectId).eq('user_id', profile.id).then(({ data }) => setRoles((data ?? []).map(x => x.role))) }, [projectId, profile.id])
   const canMove = roles.includes('operative') || roles.includes('site_manager') || profile.role === 'admin'
   const canTelehandle = roles.includes('telehandler_operator') || roles.includes('site_manager') || profile.role === 'admin'
   const start = (next: 'delivery' | 'install' | 'removal' | 'recycling') => { setWorkflowCode(''); setModal(next) }
-  return <main className="field-shell"><AppHeader profile={profile} project={project} onSignOut={onSignOut} field /><section className="field-intro"><p className="kicker">FIELD OPERATOR</p><h1>What are you doing?</h1><p>Choose one task. The app guides you through each required check in the right order.</p></section>{(canMove || canTelehandle) ? <div className="task-grid">{canMove && <><Task icon={<Truck />} title="Receive delivery" text="Scan the pallet, complete delivery inspection, then inspect the panels." onClick={() => start('delivery')} /><Task icon={<Barcode />} title="Remove panels" text="Select the signed isolation certificate, scan panels and choose their destination." onClick={() => start('removal')} /><Task icon={<ScanLine />} title="Recycle at Compound" text="Scan the recycling pallet QR, then scan every panel onto it." onClick={() => start('recycling')} /><Task icon={<PackageCheck />} title="Install panels" text="Scan the pallet, move it to field storage and assign its combiner box." onClick={() => start('install')} /></>}{canTelehandle && <Task icon={<Truck />} title="Telehandler daily check" text="Complete and sign the pre-use inspection before first use." onClick={() => setModal('telehandler_pre_use')} />}</div> : <section className="notice"><ShieldCheck /> Your current role does not have field access.</section>}{modal && (modal === 'pallet_delivery' || modal === 'panel_visual' || modal === 'telehandler_pre_use' ? <ChecklistWorkflow kind={modal} projectId={projectId} profileId={profile.id} assetCode={workflowCode} onSaved={() => modal === 'pallet_delivery' ? setModal('panel_visual') : setModal(undefined)} close={() => setModal(undefined)} /> : <FieldWorkflow type={modal} projectId={projectId} profileId={profile.id} onSaved={code => modal === 'delivery' ? (setWorkflowCode(code), setModal('pallet_delivery')) : setModal(undefined)} close={() => setModal(undefined)} />)}</main>
+  return <main className="field-shell"><AppHeader profile={profile} project={project} device={device} onSignOut={onSignOut} field /><section className="field-intro"><p className="kicker">FIELD OPERATOR</p><h1>What are you doing?</h1><p>Choose one task. The app guides you through each required check in the right order.</p></section>{(canMove || canTelehandle) ? <div className="task-grid">{canMove && <><Task icon={<Truck />} title="Receive delivery" text="Scan the pallet, complete delivery inspection, then inspect the panels." onClick={() => start('delivery')} /><Task icon={<Barcode />} title="Remove panels" text="Select the signed isolation certificate, scan panels and choose their destination." onClick={() => start('removal')} /><Task icon={<ScanLine />} title="Recycle at Compound" text="Scan the recycling pallet QR, then scan every panel onto it." onClick={() => start('recycling')} /><Task icon={<PackageCheck />} title="Install panels" text="Scan the pallet, move it to field storage and assign its combiner box." onClick={() => start('install')} /></>}{canTelehandle && <Task icon={<Truck />} title="Telehandler daily check" text="Complete and sign the pre-use inspection before first use." onClick={() => setModal('telehandler_pre_use')} />}</div> : <section className="notice"><ShieldCheck /> Your current role does not have field access.</section>}{modal && (modal === 'pallet_delivery' || modal === 'panel_visual' || modal === 'telehandler_pre_use' ? <ChecklistWorkflow kind={modal} projectId={projectId} profileId={profile.id} assetCode={workflowCode} onSaved={() => modal === 'pallet_delivery' ? setModal('panel_visual') : setModal(undefined)} close={() => setModal(undefined)} /> : <FieldWorkflow type={modal} projectId={projectId} profileId={profile.id} onSaved={code => modal === 'delivery' ? (setWorkflowCode(code), setModal('pallet_delivery')) : setModal(undefined)} close={() => setModal(undefined)} />)}</main>
 }
 function Task({ icon, title, text, onClick }: { icon: ReactNode; title: string; text: string; onClick: () => void }) { return <button className="task-card" onClick={onClick}><span className="task-icon">{icon}</span><span><b>{title}</b><small>{text}</small></span><ScanLine size={20} /></button> }
 function ScanModal({ title, close }: { title: string; close: () => void }) { return <div className="modal-backdrop"><section className="scan-modal"><button className="close" onClick={close}>Close</button><p className="kicker">SCAN</p><h2>{title}</h2><p>Camera scanning is the next build step in this replacement application. No manual serial entry will be used in normal field operation.</p><button className="button primary" onClick={close}>Continue</button></section></div> }
