@@ -1,8 +1,8 @@
--- Rayet / Shoals Hook database setup. Run once in Supabase Dashboard > SQL Editor.
+-- SRS / Shoals Hook database setup. Run once in Supabase Dashboard > SQL Editor.
 -- Sign-in accounts use normal work emails. Set their password via recovery to PT-<four-digit-PIN>.
 
 create table if not exists public.profiles (id uuid primary key references auth.users(id) on delete cascade,staff_id text not null unique check (staff_id ~ '^[A-Za-z0-9_-]{2,40}$'),display_name text not null,role text not null default 'member' check (role in ('member','admin')),created_at timestamptz not null default now());
-create table if not exists public.projects (id uuid primary key default gen_random_uuid(),company text not null default 'Rayet',name text not null,code text unique,created_at timestamptz not null default now(),unique (company,name));
+create table if not exists public.projects (id uuid primary key default gen_random_uuid(),company text not null default 'SRS',name text not null,code text unique,created_at timestamptz not null default now(),unique (company,name));
 create table if not exists public.site_locations (id uuid primary key default gen_random_uuid(),project_id uuid not null references public.projects(id) on delete cascade,name text not null,location_type text not null check(location_type in ('compound_delivery_in','compound_recycling_out','field_storage_in','field_storage_out','field_damaged_area')),field_number integer check(field_number between 1 and 6),is_active boolean not null default true,unique(project_id,name));
 create table if not exists public.combiner_boxes (id uuid primary key default gen_random_uuid(),project_id uuid not null references public.projects(id) on delete cascade,field_number integer not null check(field_number between 1 and 6),box_code text not null,is_active boolean not null default true,unique(project_id,box_code));
 create table if not exists public.install_allocations (id uuid primary key default gen_random_uuid(),project_id uuid not null references public.projects(id) on delete cascade,pallet_id uuid references public.inventory_pallets(id),panel_id uuid references public.inventory_panels(id),destination_location_id uuid references public.site_locations(id),combiner_box_id uuid references public.combiner_boxes(id),source_reference text,created_at timestamptz not null default now(),check(pallet_id is not null or panel_id is not null));
@@ -43,7 +43,7 @@ alter table public.custody_events drop constraint if exists custody_events_check
 alter table public.custody_events drop constraint if exists custody_events_safety_check;
 alter table public.custody_events add constraint custody_events_stage_check check (stage in (1,2));
 alter table public.custody_events add constraint custody_events_safety_check check ((stage=1 and isolation_confirmed and isolation_reference is not null) or stage=2);
-insert into public.projects (company,name,code) values ('Rayet','Shoals Hook','SHOALS-HOOK') on conflict (company,name) do nothing;
+insert into public.projects (company,name,code) values ('SRS','Shoals Hook','SHOALS-HOOK') on conflict (company,name) do nothing;
 -- Baseline operational bays.  Admin can add/edit locations and combiner boxes later.
 insert into public.site_locations(project_id,name,location_type,field_number)
 select p.id,'Compound Delivery IN Bay','compound_delivery_in',null from public.projects p where p.code='SHOALS-HOOK'
@@ -60,7 +60,7 @@ on conflict(project_id,name) do nothing;
 insert into public.site_locations(project_id,name,location_type,field_number)
 select p.id,'Field '||n||' Damaged Area','field_damaged_area',n from public.projects p cross join generate_series(1,6) n where p.code='SHOALS-HOOK'
 on conflict(project_id,name) do nothing;
-update public.custody_events set project_id=(select id from public.projects where company='Rayet' and name='Shoals Hook') where project_id is null;
+update public.custody_events set project_id=(select id from public.projects where company='SRS' and name='Shoals Hook') where project_id is null;
 alter table public.custody_events alter column project_id set not null;
 create index if not exists custody_events_project_barcode_idx on public.custody_events (project_id,barcode,occurred_at desc);
 
@@ -93,7 +93,7 @@ create policy "users view assigned projects" on public.projects for select to au
 create policy "members view their project events" on public.custody_events for select to authenticated using (exists(select 1 from public.project_members m where m.project_id=custody_events.project_id and m.user_id=(select auth.uid())));
 create policy "members append their project events" on public.custody_events for insert to authenticated with check (recorded_by=(select auth.uid()) and exists(select 1 from public.project_members m where m.project_id=custody_events.project_id and m.user_id=(select auth.uid())));
 
--- Project-role capability layer. Profile admin remains the Rayet platform administrator;
+-- Project-role capability layer. Profile admin remains the SRS platform administrator;
 -- operational permissions belong to each project assignment.
 insert into public.project_member_roles(project_id,user_id,role) select project_id,user_id,'operative' from public.project_members where role='worker' on conflict do nothing;
 insert into public.project_member_roles(project_id,user_id,role) select project_id,user_id,'site_manager' from public.project_members where role in ('supervisor','admin') on conflict do nothing;

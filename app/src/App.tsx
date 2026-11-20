@@ -7,6 +7,7 @@ import { CameraScanner } from './CameraScanner'
 import { InstallationRegister } from './InstallationRegister'
 import { FieldWorkflow } from './FieldWorkflow'
 import { ChecklistWorkflow } from './ChecklistWorkflow'
+import srsLogo from './assets/srslogo.png'
 
 type Membership = { project_id: string; projects: Project }
 type Location = { id: string; name: string; location_type: string; field_number: number | null }
@@ -82,7 +83,7 @@ export function App() {
 
   const project = memberships.find(x => x.project_id === projectId)?.projects
   const chooseProject = (id: string) => { setProjectId(id); localStorage.setItem('rayet-project-id', id) }
-  if (!sessionReady) return <div className="loading">Loading Rayet…</div>
+  if (!sessionReady) return <div className="loading">Loading SRS…</div>
   if (!userId) return <SignIn />
   if (!project) return <NoProject onSignOut={() => supabase.auth.signOut()} />
   return fieldMode
@@ -102,10 +103,10 @@ function SignIn() {
 }
 
 function NoProject({ onSignOut }: { onSignOut: () => void }) {
-  return <main className="auth"><section className="auth-card"><Brand /><h1>No project access</h1><p>Your account is active but is not assigned to a project. Ask a Rayet administrator to assign you.</p><button className="button" onClick={onSignOut}>Sign out</button></section></main>
+  return <main className="auth"><section className="auth-card"><Brand /><h1>No project access</h1><p>Your account is active but is not assigned to a project. Ask an SRS administrator to assign you.</p><button className="button" onClick={onSignOut}>Sign out</button></section></main>
 }
 
-function Brand() { return <div className="brand"><span className="brand-mark">R</span><span>Rayet<small>Shoals Hook</small></span></div> }
+function Brand() { return <div className="brand"><img className="brand-logo" src={srsLogo} alt="SRS" /><small>Shoals Hook</small></div> }
 
 function AppHeader({ profile, project, memberships, device, onProject, onManageProjects, onSignOut, field }: { profile: Profile; project: Project; memberships?: Membership[]; device?: RegisteredDevice; onProject?: (id: string) => void; onManageProjects?: () => void; onSignOut: () => void; field?: boolean }) {
   return <header className="header"><Brand /><div className="header-right">{memberships && <label className="project-select">Project<select value={project.id} onChange={e => onProject?.(e.target.value)}>{memberships.map(x => <option value={x.project_id} key={x.project_id}>{x.projects.name}</option>)}</select></label>}{onManageProjects && <button className="button manage-projects" onClick={onManageProjects}>Manage projects</button>} {field && <span className="project-badge">{project.name}</span>}<span className={`device-chip ${device ? 'registered' : ''}`} title={device ? `Registered ${device.device_type}` : 'This browser has not been registered'}>{device ? device.name : 'Personal device'}</span><span className="user-chip" title={profile.display_name}><span>{initials(profile.display_name)}</span>{profile.display_name}</span><button className="button signout" onClick={onSignOut}><LogOut size={16} />Sign out</button></div></header>
@@ -131,7 +132,7 @@ function AdminHome({ projectId, projectName, deviceToken, device, onDeviceChange
   const add = async () => { if (!code.trim()) return setMessage('Enter a combiner box code.'); const { error } = await supabase.from('combiner_boxes').insert({ project_id: projectId, field_number: Number(field), box_code: code.trim() }); setMessage(error ? error.message : 'Combiner box added.'); if (!error) { setCode(''); refresh() } }
   return <div className="admin-page">
     <div className="page-title"><div><h1>{projectName}</h1><p>Project configuration, access and operational control.</p></div></div>
-    <Accordion title="Operational locations & combiner boxes" icon={<Boxes size={20} />}><div className="operational-config"><section className="combiner-config"><h3>Add combiner box</h3>{isAdmin ? <><div className="form-line"><select value={field} onChange={e => setField(e.target.value)}>{[1,2,3,4,5,6].map(x => <option key={x} value={x}>Field {x}</option>)}</select><input value={code} placeholder="e.g. CB-F1-001" onChange={e => setCode(e.target.value)} /><button className="button primary" onClick={add}>Add</button></div>{message && <p className="form-message">{message}</p>}</> : <p className="muted">Only a Rayet Administrator can add project configuration.</p>}{boxes.length > 0 && <div className="combiner-list">{boxes.map(b => <span className="pill" key={b.id}>Field {b.field_number} · {b.box_code}</span>)}</div>}</section><section><h3>Locations</h3><div className="location-list">{locations.length ? locations.map(l => <LocationCard key={l.id} location={l} />) : <Empty text="Run the operator events migration to create the project locations." />}</div></section></div></Accordion>
+    <Accordion title="Operational locations & combiner boxes" icon={<Boxes size={20} />}><div className="operational-config"><section className="combiner-config"><h3>Add combiner box</h3>{isAdmin ? <><div className="form-line"><select value={field} onChange={e => setField(e.target.value)}>{[1,2,3,4,5,6].map(x => <option key={x} value={x}>Field {x}</option>)}</select><input value={code} placeholder="e.g. CB-F1-001" onChange={e => setCode(e.target.value)} /><button className="button primary" onClick={add}>Add</button></div>{message && <p className="form-message">{message}</p>}</> : <p className="muted">Only an SRS Administrator can add project configuration.</p>}{boxes.length > 0 && <div className="combiner-list">{boxes.map(b => <span className="pill" key={b.id}>Field {b.field_number} · {b.box_code}</span>)}</div>}</section><section><h3>Locations</h3><div className="location-list">{locations.length ? locations.map(l => <LocationCard key={l.id} location={l} />) : <Empty text="Run the operator events migration to create the project locations." />}</div></section></div></Accordion>
     <Accordion title="People & project roles" icon={<UsersRound size={20} />}><AccessManager projectId={projectId} projectName={projectName} canManage={isAdmin} /></Accordion>
     <Accordion title="Devices & 2D scanners" icon={<ScanLine size={20} />}><DevicesManager projectId={projectId} deviceToken={deviceToken} currentDevice={device} onDeviceChange={onDeviceChange} canManage={isAdmin} /></Accordion>
   </div>
@@ -150,7 +151,7 @@ function ProjectsManager({ currentProjectId, canManage }: { currentProjectId: st
     if (!form.name.trim()) return setMessage('Enter a project name.')
     const code = form.name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '')
     const values = {
-      company: 'Rayet', name: form.name.trim(), code,
+      company: 'SRS', name: form.name.trim(), code,
       project_manager_name: form.manager.trim() || null, project_manager_email: form.email.trim() || null,
       project_manager_mobile: form.mobile.trim() || null, project_address: form.address.trim() || null, what3words: form.w3w.trim() || null,
     }
@@ -197,7 +198,7 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
   }
   useEffect(() => { load() }, [projectId])
   const projectRolesFor = (id: string) => roles.filter(x => x.user_id === id).map(x => x.role)
-  const rolesFor = (id: string) => [...(staff.find(x => x.id === id)?.role === 'admin' ? ['Rayet Administrator'] : []), ...projectRolesFor(id)]
+  const rolesFor = (id: string) => [...(staff.find(x => x.id === id)?.role === 'admin' ? ['SRS Administrator'] : []), ...projectRolesFor(id)]
   const select = (id: string) => { setSelected(id); setSelectedRoles(projectRolesFor(id)); setGlobalAdmin(staff.find(x => x.id === id)?.role === 'admin'); setResetPin('') }
   const toggle = (role: string) => setSelectedRoles(current => current.includes(role) ? current.filter(x => x !== role) : [...current, role])
   const toggleNewUserRole = (role: string) => setNewUser(current => ({ ...current, roles: current.roles.includes(role) ? current.roles.filter(item => item !== role) : [...current.roles, role] }))
@@ -243,9 +244,9 @@ function AccessManager({ projectId, projectName, canManage }: { projectId: strin
   const assigned = members.map(m => ({ staff: staff.find(x => x.id === m.user_id), userId: m.user_id })).filter(x => x.staff)
   return <div className="access-manager">
     <p className="muted">Showing assignments for <b>{projectName}</b>. Roles are assigned per project, so a person can hold different roles on different projects.</p>
-    {canManage && <><button className="button primary" onClick={() => { setShowNewUser(open => !open); setMessage('') }}>{showNewUser ? 'Cancel' : 'Add user'}</button>{showNewUser && <div className="new-user-form"><h3>Add user to {projectName}</h3><div className="new-user-fields"><label>Name<input value={newUser.displayName} onChange={event => setNewUser(current => ({ ...current, displayName: event.target.value }))} placeholder="Full name" /></label><label>Work email<input type="email" value={newUser.email} onChange={event => setNewUser(current => ({ ...current, email: event.target.value }))} placeholder="name@company.co.uk" /></label><label>Four-digit PIN<input type="password" inputMode="numeric" maxLength={4} value={newUser.pin} onChange={event => setNewUser(current => ({ ...current, pin: event.target.value.replace(/\D/g, '') }))} placeholder="1234" /></label></div><div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={newUser.roles.includes(role.id)} onChange={() => toggleNewUserRole(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={newUser.globalAdmin} onChange={event => setNewUser(current => ({ ...current, globalAdmin: event.target.checked }))} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div><button className="button primary" disabled={creatingUser} onClick={createUser}>{creatingUser ? 'Creating…' : 'Create user'}</button></div>}<div className="role-editor">
+    {canManage && <><button className="button primary" onClick={() => { setShowNewUser(open => !open); setMessage('') }}>{showNewUser ? 'Cancel' : 'Add user'}</button>{showNewUser && <div className="new-user-form"><h3>Add user to {projectName}</h3><div className="new-user-fields"><label>Name<input value={newUser.displayName} onChange={event => setNewUser(current => ({ ...current, displayName: event.target.value }))} placeholder="Full name" /></label><label>Work email<input type="email" value={newUser.email} onChange={event => setNewUser(current => ({ ...current, email: event.target.value }))} placeholder="name@company.co.uk" /></label><label>Four-digit PIN<input type="password" inputMode="numeric" maxLength={4} value={newUser.pin} onChange={event => setNewUser(current => ({ ...current, pin: event.target.value.replace(/\D/g, '') }))} placeholder="1234" /></label></div><div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={newUser.roles.includes(role.id)} onChange={() => toggleNewUserRole(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={newUser.globalAdmin} onChange={event => setNewUser(current => ({ ...current, globalAdmin: event.target.checked }))} /><span><b>SRS Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div><button className="button primary" disabled={creatingUser} onClick={createUser}>{creatingUser ? 'Creating…' : 'Create user'}</button></div>}<div className="role-editor">
       <div className="editor-top"><label>Person to assign to {projectName}<select value={selected} onChange={e => select(e.target.value)}><option value="">Select a person…</option>{staff.map(s => <option key={s.id} value={s.id}>{s.display_name}</option>)}</select></label></div>
-      <div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={selectedRoles.includes(role.id)} onChange={() => toggle(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={globalAdmin} onChange={e => setGlobalAdmin(e.target.checked)} /><span><b>Rayet Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div>
+      <div className="role-options">{projectRoles.map(role => <label className="role-option" key={role.id}><input type="checkbox" checked={selectedRoles.includes(role.id)} onChange={() => toggle(role.id)} /><span><b>{role.label}</b><small>{role.description}</small></span></label>)}<label className="role-option global-role"><input type="checkbox" checked={globalAdmin} onChange={e => setGlobalAdmin(e.target.checked)} /><span><b>SRS Administrator</b><small>Global access: projects, people, imports and system configuration.</small></span></label></div>
       <button className="button primary" onClick={save}>Save project roles</button>
       {selected && <div className="pin-reset"><b>Reset sign-in PIN</b><small>Sets this person’s app password securely. They will sign in using this four-digit PIN.</small><div><input type="password" inputMode="numeric" maxLength={4} value={resetPin} onChange={event => setResetPin(event.target.value.replace(/\D/g, ''))} placeholder="Four-digit PIN" /><button className="button" disabled={resettingPin} onClick={resetUserPin}>{resettingPin ? 'Resetting…' : 'Reset PIN'}</button></div></div>}
     </div></>}
@@ -310,11 +311,11 @@ function LegacyDeliveryPlan({ projectId, isAdmin }: { projectId: string; isAdmin
   }
   const print = async (delivery: Delivery) => {
     const QRCode = (await import('qrcode')).default
-    const qr = await QRCode.toDataURL('rayet-delivery:' + delivery.id + ':' + delivery.qr_token, { width: 460, margin: 2 })
+    const qr = await QRCode.toDataURL('srs-delivery:' + delivery.id + ':' + delivery.qr_token, { width: 460, margin: 2 })
     const win = window.open('', '_blank'); if (!win) return setMessage('Allow pop-ups to print a delivery QR label.')
-    win.document.title = 'Rayet delivery ' + delivery.order_number
+    win.document.title = 'SRS delivery ' + delivery.order_number
     const page = win.document.createElement('main'); page.style.cssText = 'font-family:Arial,sans-serif;text-align:center;padding:28px'
-    page.innerHTML = '<h1>Rayet · Shoals Hook</h1><h2>Delivery ' + delivery.order_number + '</h2><p>Scan when the vehicle arrives at Compound Delivery Bay.</p>'
+    page.innerHTML = '<h1>SRS · Shoals Hook</h1><h2>Delivery ' + delivery.order_number + '</h2><p>Scan when the vehicle arrives at Compound Delivery Bay.</p>'
     const image = win.document.createElement('img'); image.src = qr; image.alt = 'Delivery QR code'; page.append(image)
     const note = win.document.createElement('p'); note.textContent = 'Pallet labels remain optional; this label identifies the delivery.'; page.append(note)
     const printButton = win.document.createElement('button'); printButton.textContent = 'Print label'; printButton.style.cssText = 'display:block;margin:20px auto;padding:12px 18px;border:0;border-radius:8px;background:#123a36;color:#fff;font-weight:700;cursor:pointer'; printButton.onclick = () => win.print(); page.append(printButton)

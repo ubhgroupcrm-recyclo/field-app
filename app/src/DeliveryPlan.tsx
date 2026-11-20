@@ -66,11 +66,11 @@ export function DeliveryPlan({ projectId, isAdmin }: { projectId: string; isAdmi
   }
   const print = async (delivery: Delivery) => {
     const QRCode = (await import('qrcode')).default
-    const qr = await QRCode.toDataURL(`rayet-delivery:${delivery.id}:${delivery.qr_token}`, { width: 460, margin: 2 })
+    const qr = await QRCode.toDataURL(`srs-delivery:${delivery.id}:${delivery.qr_token}`, { width: 460, margin: 2 })
     const win = window.open('', '_blank')
     if (!win) return setMessage('Allow pop-ups to print a delivery QR label.')
-    win.document.title = `Rayet delivery ${delivery.order_number}`
-    win.document.body.innerHTML = `<main style="font-family:Arial,sans-serif;text-align:center;padding:28px"><h1>Rayet · Shoals Hook</h1><h2>Delivery ${delivery.order_number}</h2><p>Scan when the vehicle arrives at Compound Delivery Bay.</p><img src="${qr}" alt="Delivery QR code"><p>Pallet labels remain optional; this label identifies the delivery.</p><button onclick="window.print()" style="padding:12px 18px;border:0;border-radius:8px;background:#123a36;color:#fff;font-weight:700;cursor:pointer">Print label</button></main>`
+    win.document.title = `SRS delivery ${delivery.order_number}`
+    win.document.body.innerHTML = `<main style="font-family:Arial,sans-serif;text-align:center;padding:28px"><h1>SRS · Shoals Hook</h1><h2>Delivery ${delivery.order_number}</h2><p>Scan when the vehicle arrives at Compound Delivery Bay.</p><img src="${qr}" alt="Delivery QR code"><p>Pallet labels remain optional; this label identifies the delivery.</p><button onclick="window.print()" style="padding:12px 18px;border:0;border-radius:8px;background:#123a36;color:#fff;font-weight:700;cursor:pointer">Print label</button></main>`
   }
   const openPallet = async (pallet: InventoryPallet) => {
     setSelectedPallet(pallet)
